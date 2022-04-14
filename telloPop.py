@@ -10,6 +10,8 @@ import numpy
 
 FRAME_HEIGHT = 720
 FRAME_WIDTH = 960
+FORWARD_SPEED = 50
+BACKWARD_SPEED = -FORWARD_SPEED
 
 """Colors of Baloon"""
 greenLower = (30, 50, 50) 
@@ -24,21 +26,6 @@ blueLower = (100,150,0)
 blueUpper = (140,255,255)
 #blueCode = cv2.COLOR_BGR2HSV
 
-takeOff = False
-
-def main():
-    telloTrack = TelloCV()
-    myTello = telloTrack.drone
-    while True:
-        frameRead = myTello.get_frame_read()
-        height, width, _ = frameRead.frame.shape #get the frame config
-        current_frame = frameRead.frame
-        current_frame = cv2.resize(current_frame, (width,height))
-        current_frame = telloTrack.process_frame(current_frame)
-        if cv2.waitKey(1) & 0xFF == ord('q') and takeOff:
-            myTello.land()
-            break
-        cv2.imshow("Image", current_frame)
 
 class TelloCV(object):
     def __init__(self):
@@ -47,11 +34,11 @@ class TelloCV(object):
         self.up_down_speed = 0
         self.yaw_speed = 0
         self.forward_backward = 0
+        self.takeOff = False
         self.drone = Tello()
         self.init_drone()
         self.init_controls()
         self.init_PID()
-        #greenCode : cv2.COLOR_RGB2HSV is better than cv2.COLOR_BGR2HSV but due the fact that all others are cv2.COLOR_BGR2HSV i use this as the default
         self.popBaloons = {0: [0, greenLower, greenUpper], 1: [0, blueLower,blueUpper], 2: [0, redLower,redUpper]}
         self.popCounter = 0
         self.colortracker = Tracker(FRAME_HEIGHT,FRAME_WIDTH,
@@ -72,8 +59,7 @@ class TelloCV(object):
             self.keydown = True
             keyname = str(keyname).strip('\'')
             if(keyname == 't'):
-                global takeOff
-                takeOff = True
+                self.takeOff = True
                 key_handler = self.controls[keyname]
                 key_handler()
         except AttributeError:
@@ -89,6 +75,7 @@ class TelloCV(object):
         self.controls = {
             't': lambda: self.drone.takeoff(),
         }
+
         self.key_listener = keyboard.Listener(on_press=self.on_press,
                                               on_release=self.on_release)
         self.key_listener.start()
@@ -140,20 +127,17 @@ class TelloCV(object):
 
     def process_frame(self, frame):
         """convert frame to cv2 image and show"""
-        image = cv2.cvtColor(numpy.array(
-            frame), cv2.COLOR_RGB2BGR)
+        image = cv2.cvtColor(numpy.array(frame), cv2.COLOR_RGB2BGR)
         distance = 0
+
         xoff, yoff,radius = self.colortracker.track(image)
 
-        #print("BALOON: ({Vx},{Vy})".format(Vx=xoff,Vy=yoff)) # Print statement to ensure Vx and Vy are reasonable values (<50)  
         image = self.colortracker.draw_arrows(image)
         Vx,Vy=self.PID.send([xoff, yoff, distance])
 
         cv2.putText(image, f"Radius: {round(radius,2)}", (30, 35),cv2.FONT_HERSHEY_COMPLEX, 0.6, (0, 0, 255), 2)
 
-       # print("Drone: ({Vx},{Vy})".format(Vx=X,Vy=Y)) # Print statement to ensure Vx and Vy are reasonable values (<50)   
-        # Create a loop to implement the Vx and Vy as a command to move the drone accordingly
-        if takeOff:
+        if self.takeOff:
             if radius == 0:
                 self.drone.send_rc_control(0,0,0,0)
                 """
@@ -172,17 +156,41 @@ class TelloCV(object):
                 if Vy < 0:
                     self.up_down_speed = - int(abs(Vy))
                 if radius < 180:
-                    self.forward_backward = 50
+                    self.forward_backward = FORWARD_SPEED
                     #self.popBaloons[self.popCounter][0] += 1
                 elif radius >= 200:
-                    self.forward_backward = -50
+                    self.forward_backward = BACKWARD_SPEED
                     #if self.popBaloons[self.popCounter][0] == 1:
                         #self.popBaloons[self.popCounter][0] += 1
                 else:
-                    self.forward_backward = 0    
+                    self.forward_backward = 0  
+
             if(self.drone.send_rc_control):
                 self.drone.send_rc_control(0,self.forward_backward,self.up_down_speed,self.yaw_speed)
+
+
         return image
+
+
+def main():
+    telloTrack = TelloCV()
+    myTello = telloTrack.drone
+    while True:
+        
+        frameRead = myTello.get_frame_read()
+
+        height, width, _ = frameRead.frame.shape #get the frame config
+        current_frame = frameRead.frame
+        current_frame = cv2.resize(current_frame, (width,height))
+
+        current_frame = telloTrack.process_frame(current_frame)
+
+        if cv2.waitKey(1) & 0xFF == ord('q') and telloTrack.takeOff: # if the q pressed on the cv2 screen
+            myTello.land()
+            break
+
+
+        cv2.imshow("Image", current_frame)
 
 if __name__ == "__main__":
     main()
