@@ -26,6 +26,7 @@ blueCode = cv2.COLOR_BGR2HSV
 #color_lower = (90, 50, 50)
 #color_upper =(110, 255, 255)
 
+#This file is used only to check if the detections works properly
 
 # This function initializes tello drone and returnes reference to tello
 def setupDrone():
