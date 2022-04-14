@@ -13,6 +13,12 @@ FRAME_WIDTH = 960
 FORWARD_SPEED = 50
 BACKWARD_SPEED = -FORWARD_SPEED
 
+STEP_ONE_TO_POP = 1
+STEP_TWO_TO_POP = 2
+
+RADIUS_TO_FOLLOW = 180
+RADIUS_TO_GET_AWAY = 210
+
 """Colors of Baloon"""
 greenLower = (30, 50, 50) 
 greenUpper = (80, 255, 255)
@@ -25,6 +31,8 @@ redUpper = (179,255,255)
 blueLower = (100,150,0)
 blueUpper = (140,255,255)
 #blueCode = cv2.COLOR_BGR2HSV
+
+
 
 
 class TelloCV(object):
@@ -135,62 +143,70 @@ class TelloCV(object):
         image = self.colortracker.draw_arrows(image)
         Vx,Vy=self.PID.send([xoff, yoff, distance])
 
-        cv2.putText(image, f"Radius: {round(radius,2)}", (30, 35),cv2.FONT_HERSHEY_COMPLEX, 0.6, (0, 0, 255), 2)
+        cv2.putText(image, f"Radius: {round(radius,2)}", (30, 35),cv2.FONT_HERSHEY_COMPLEX, 0.6, (0, 0, 255), 2) # Look up after the radius of the balloon
 
-        if self.takeOff:
-            if radius == 0:
-                self.drone.send_rc_control(0,0,0,0)
-                """
-                if self.popBaloons[self.popCounter][0] == 2:
+        if self.takeOff: # if the drone is already in the air
+
+            if radius == 0: # if no object has been detected
+                self.drone.send_rc_control(0,0,0,0) #the drone does nothing
+                if self.popBaloons[self.popCounter][0] == STEP_TWO_TO_POP: #if the drone just finished to pop one of the baloons
                     self.colortracker = Tracker(FRAME_HEIGHT,FRAME_WIDTH,
-                            self.popBaloons[self.popCounter][1], self.popBaloons[self.popCounter][2])
-                    self.popCounter += 1
-                """
+                            self.popBaloons[self.popCounter][1], self.popBaloons[self.popCounter][2]) # set the tracker for the next color balloon
+                    self.popCounter += 1 # set to next balloon
             else:
+
                 if Vx > 0:
-                    self.yaw_speed = int(abs(Vx))
+                    self.yaw_speed = int(abs(Vx)) # rotate right
+
                 if Vx < 0:
-                    self.yaw_speed = - int(abs(Vx))
+                    self.yaw_speed = - int(abs(Vx)) # rotate left
+
                 if Vy > 0:
-                    self.up_down_speed = int(abs(Vy))
+                    self.up_down_speed = int(abs(Vy)) # go up
+
                 if Vy < 0:
-                    self.up_down_speed = - int(abs(Vy))
-                if radius < 180:
-                    self.forward_backward = FORWARD_SPEED
-                    #self.popBaloons[self.popCounter][0] += 1
-                elif radius >= 200:
-                    self.forward_backward = BACKWARD_SPEED
-                    #if self.popBaloons[self.popCounter][0] == 1:
-                        #self.popBaloons[self.popCounter][0] += 1
+                    self.up_down_speed = - int(abs(Vy)) # go down
+
+                """ These lines make the drone "kiss" the balloon (he goes forwards and then quickly backwards)"""
+
+                if radius < RADIUS_TO_FOLLOW: # if the drone is not close to the balloon
+                    self.forward_backward = FORWARD_SPEED # set to him forward speed towards the balloon
+                    self.popBaloons[self.popCounter][0] = STEP_ONE_TO_POP
+
+                elif radius >= RADIUS_TO_GET_AWAY: # if the drone is too close to the balloon
+                    self.forward_backward = BACKWARD_SPEED # set to him forward speed away from the balloon
+                    if self.popBaloons[self.popCounter][0] == STEP_ONE_TO_POP:
+                        self.popBaloons[self.popCounter][0] = STEP_TWO_TO_POP # now the drone 100% popped the balloons
                 else:
                     self.forward_backward = 0  
 
             if(self.drone.send_rc_control):
-                self.drone.send_rc_control(0,self.forward_backward,self.up_down_speed,self.yaw_speed)
-
+                self.drone.send_rc_control(0,self.forward_backward,self.up_down_speed,self.yaw_speed) #move the drone
 
         return image
 
 
 def main():
+
     telloTrack = TelloCV()
-    myTello = telloTrack.drone
+    myTello = telloTrack.drone #reference to tello object
+
     while True:
-        
-        frameRead = myTello.get_frame_read()
+
+        frameRead = myTello.get_frame_read() #get frame by frame from tello
 
         height, width, _ = frameRead.frame.shape #get the frame config
-        current_frame = frameRead.frame
+        current_frame = frameRead.frame # set the frame config
         current_frame = cv2.resize(current_frame, (width,height))
 
-        current_frame = telloTrack.process_frame(current_frame)
+        current_frame = telloTrack.process_frame(current_frame) # control the drone and give updated image with the detected balloon
 
-        if cv2.waitKey(1) & 0xFF == ord('q') and telloTrack.takeOff: # if the q pressed on the cv2 screen
+        if cv2.waitKey(1) & 0xFF == ord('q') and telloTrack.takeOff: # if the 'q' pressed on the cv2 screen
             myTello.land()
             break
 
+        cv2.imshow("Image", current_frame) # show the last frame
 
-        cv2.imshow("Image", current_frame)
 
 if __name__ == "__main__":
     main()
