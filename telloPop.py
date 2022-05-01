@@ -11,15 +11,14 @@ import numpy
 FRAME_HEIGHT = 720
 FRAME_WIDTH = 960
 FORWARD_SPEED = 50
-BACKWARD_SPEED = -FORWARD_SPEED
 
 STEP_ONE_TO_POP = 1
 STEP_TWO_TO_POP = 2
-NUM_OF_BALLOON_TYPES = 3
+NUM_OF_BALLOON_TYPES = 2
 
 
-RADIUS_TO_FOLLOW = 180
-RADIUS_TO_GET_AWAY = 200
+RADIUS_TO_FOLLOW = 170
+RADIUS_TO_GET_AWAY = 185
 
 """Colors of Baloon"""
 greenLower = (30, 50, 50) 
@@ -49,11 +48,12 @@ class TelloCV(object):
         self.init_drone()
         self.init_controls()
         self.init_PID()
+        #The key is the index, the first element in the list is the progress level, the rest are color settings
         self.popBaloons = {0: [0, greenLower, greenUpper, greenCode], 1: [0, blueLower,blueUpper, blueCode], 2: [0, redLower,redUpper, greenCode]}
+
         self.popCounter = 0
         self.colortracker = Tracker(FRAME_HEIGHT,FRAME_WIDTH,
                                self.popBaloons[0][1], self.popBaloons[0][2], self.popBaloons[0][3])
-
 
     def init_drone(self):
         """Connect, uneable streaming"""
@@ -151,9 +151,6 @@ class TelloCV(object):
         if self.takeOff: # if the drone is already in the air
 
             if radius == 0: # if no object has been detected
-                if self.popCounter == NUM_OF_BALLOON_TYPES: # if all green,blue,red balloons were popped
-                    self.drone.land()
-                    exit()
                 self.drone.send_rc_control(0,0,0,0) #the drone does nothing
 
                 if self.popBaloons[self.popCounter][0] == STEP_TWO_TO_POP: #if the drone just finished to pop one of the baloons
@@ -181,7 +178,7 @@ class TelloCV(object):
                     self.popBaloons[self.popCounter][0] = STEP_ONE_TO_POP
 
                 elif radius >= RADIUS_TO_GET_AWAY: # if the drone is too close to the balloon
-                    self.forward_backward = BACKWARD_SPEED # set to him forward speed away from the balloon
+                    self.drone.move_back(60)
                     if self.popBaloons[self.popCounter][0] == STEP_ONE_TO_POP:
                         self.popBaloons[self.popCounter][0] = STEP_TWO_TO_POP # now the drone 100% popped the balloons
                 else:
@@ -198,30 +195,25 @@ def main():
     telloTrack = TelloCV()
     myTello = telloTrack.drone #reference to tello object
 
-    try:
-        while True:
+    while True:
 
-            frameRead = myTello.get_frame_read() #get frame by frame from tello
+        frameRead = myTello.get_frame_read() #get frame by frame from tello
 
-            height, width, _ = frameRead.frame.shape #get the frame config
-            current_frame = frameRead.frame # set the frame config
-            current_frame = cv2.resize(current_frame, (width,height))
+        height, width, _ = frameRead.frame.shape #get the frame config
+        current_frame = frameRead.frame # set the frame config
+        current_frame = cv2.resize(current_frame, (width,height))
 
-            current_frame = telloTrack.process_frame(current_frame) # control the drone and give updated image with the detected balloon
+        current_frame = telloTrack.process_frame(current_frame) # control the drone and give updated image with the detected balloon
 
-            if cv2.waitKey(1) & 0xFF == ord('q') and telloTrack.takeOff: # if the 'q' pressed on the cv2 screen
-                myTello.land()
-                telloTrack.takeOff = False
-                break
+        if cv2.waitKey(1) & 0xFF == ord('q') and telloTrack.takeOff: # if the 'q' pressed on the cv2 screen
+            myTello.land()
+            telloTrack.takeOff = False
+            break
 
-            cv2.imshow("Image", current_frame) # show the last frame
+        cv2.imshow("Image", current_frame) # show the last frame
 
-    except KeyboardInterrupt:
-            if telloTrack.takeOff:
-                telloTrack.drone.land()
-    except:
-            if telloTrack.takeOff:
-                telloTrack.drone.land()
 
 if __name__ == "__main__":
     main()
+
+
