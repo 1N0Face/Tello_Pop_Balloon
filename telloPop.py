@@ -15,22 +15,24 @@ BACKWARD_SPEED = -FORWARD_SPEED
 
 STEP_ONE_TO_POP = 1
 STEP_TWO_TO_POP = 2
+NUM_OF_BALLOON_TYPES = 3
+
 
 RADIUS_TO_FOLLOW = 180
-RADIUS_TO_GET_AWAY = 210
+RADIUS_TO_GET_AWAY = 200
 
 """Colors of Baloon"""
 greenLower = (30, 50, 50) 
 greenUpper = (80, 255, 255)
-#greenCode = cv2.COLOR_RGB2HSV
+greenCode = cv2.COLOR_RGB2HSV
 
 redLower = (161, 155, 84)
 redUpper = (179,255,255)
-#redCode = cv2.COLOR_BGR2HSV
+redCode = cv2.COLOR_BGR2HSV
 
-blueLower = (100,150,0)
-blueUpper = (140,255,255)
-#blueCode = cv2.COLOR_BGR2HSV
+blueLower = (90,150,0)
+blueUpper = (135,255,255)
+blueCode = cv2.COLOR_BGR2HSV
 
 
 
@@ -47,10 +49,10 @@ class TelloCV(object):
         self.init_drone()
         self.init_controls()
         self.init_PID()
-        self.popBaloons = {0: [0, greenLower, greenUpper], 1: [0, blueLower,blueUpper], 2: [0, redLower,redUpper]}
+        self.popBaloons = {0: [0, greenLower, greenUpper, greenCode], 1: [0, blueLower,blueUpper, blueCode], 2: [0, redLower,redUpper, greenCode]}
         self.popCounter = 0
         self.colortracker = Tracker(FRAME_HEIGHT,FRAME_WIDTH,
-                               self.popBaloons[0][1], self.popBaloons[0][2])
+                               self.popBaloons[0][1], self.popBaloons[0][2], self.popBaloons[0][3])
 
 
     def init_drone(self):
@@ -135,7 +137,8 @@ class TelloCV(object):
 
     def process_frame(self, frame):
         """convert frame to cv2 image and show"""
-        image = cv2.cvtColor(numpy.array(frame), cv2.COLOR_RGB2BGR)
+        #image = cv2.cvtColor(numpy.array(frame), cv2.COLOR_RGB2BGR)
+        image = frame
         distance = 0
 
         xoff, yoff,radius = self.colortracker.track(image)
@@ -148,11 +151,15 @@ class TelloCV(object):
         if self.takeOff: # if the drone is already in the air
 
             if radius == 0: # if no object has been detected
+                if self.popCounter == NUM_OF_BALLOON_TYPES: # if all green,blue,red balloons were popped
+                    self.drone.land()
+                    exit()
                 self.drone.send_rc_control(0,0,0,0) #the drone does nothing
+
                 if self.popBaloons[self.popCounter][0] == STEP_TWO_TO_POP: #if the drone just finished to pop one of the baloons
-                    self.colortracker = Tracker(FRAME_HEIGHT,FRAME_WIDTH,
-                            self.popBaloons[self.popCounter][1], self.popBaloons[self.popCounter][2]) # set the tracker for the next color balloon
                     self.popCounter += 1 # set to next balloon
+                    self.colortracker = Tracker(FRAME_HEIGHT,FRAME_WIDTH,
+                            self.popBaloons[self.popCounter][1], self.popBaloons[self.popCounter][2], self.popBaloons[self.popCounter][3]) # set the tracker for the next color balloon
             else:
 
                 if Vx > 0:
@@ -191,22 +198,30 @@ def main():
     telloTrack = TelloCV()
     myTello = telloTrack.drone #reference to tello object
 
-    while True:
+    try:
+        while True:
 
-        frameRead = myTello.get_frame_read() #get frame by frame from tello
+            frameRead = myTello.get_frame_read() #get frame by frame from tello
 
-        height, width, _ = frameRead.frame.shape #get the frame config
-        current_frame = frameRead.frame # set the frame config
-        current_frame = cv2.resize(current_frame, (width,height))
+            height, width, _ = frameRead.frame.shape #get the frame config
+            current_frame = frameRead.frame # set the frame config
+            current_frame = cv2.resize(current_frame, (width,height))
 
-        current_frame = telloTrack.process_frame(current_frame) # control the drone and give updated image with the detected balloon
+            current_frame = telloTrack.process_frame(current_frame) # control the drone and give updated image with the detected balloon
 
-        if cv2.waitKey(1) & 0xFF == ord('q') and telloTrack.takeOff: # if the 'q' pressed on the cv2 screen
-            myTello.land()
-            break
+            if cv2.waitKey(1) & 0xFF == ord('q') and telloTrack.takeOff: # if the 'q' pressed on the cv2 screen
+                myTello.land()
+                telloTrack.takeOff = False
+                break
 
-        cv2.imshow("Image", current_frame) # show the last frame
+            cv2.imshow("Image", current_frame) # show the last frame
 
+    except KeyboardInterrupt:
+            if telloTrack.takeOff:
+                telloTrack.drone.land()
+    except:
+            if telloTrack.takeOff:
+                telloTrack.drone.land()
 
 if __name__ == "__main__":
     main()

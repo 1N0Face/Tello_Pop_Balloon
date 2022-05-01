@@ -7,9 +7,10 @@ class Tracker:
 	create an x and y offset valuefrom the midpoint
 	"""
 
-	def __init__(self, height, width, color_lower, color_upper):
+	def __init__(self, height, width, color_lower, color_upper, color_code):
 		self.color_lower = color_lower
 		self.color_upper = color_upper
+		self.color_code = color_code
 		self.midx = int(width / 2)
 		self.midy = int(height / 2)
 		self.xoffset = 0
@@ -30,7 +31,7 @@ class Tracker:
 		# resize the frame, blur it, and convert it to the HSV
 		# color space
 		blurred = cv2.GaussianBlur(frame, (11, 11), 0)
-		hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+		hsv = cv2.cvtColor(blurred, self.color_code)
 
 		# construct a mask for the color then perform
 		# a series of dilations and erosions to remove any small

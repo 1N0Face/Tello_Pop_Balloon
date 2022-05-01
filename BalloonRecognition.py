@@ -19,8 +19,10 @@ redLower = (161, 155, 84)
 redUpper = (179,255,255)
 redCode = cv2.COLOR_BGR2HSV
 
-blueLower = (100,150,0)
-blueUpper = (140,255,255)
+#blueLower = (100,150,0)
+#blueUpper = (140,255,255)
+blueLower = (95,50,50)
+blueUpper = (135,255,255)
 blueCode = cv2.COLOR_BGR2HSV
 
 #color_lower = (90, 50, 50)
