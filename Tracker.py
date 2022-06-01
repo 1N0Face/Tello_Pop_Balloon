@@ -1,6 +1,10 @@
 import time, cv2
 from djitellopy import Tello
 
+"""
+    This file contains the Tracker class which detects the balloon
+"""
+
 class Tracker:
 	"""
 	A basic color tracker, it will look for colors in a range and

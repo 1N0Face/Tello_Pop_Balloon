@@ -4,8 +4,6 @@ from djitellopy import Tello
 import time, cv2
 from pynput import keyboard
 from Tracker import Tracker
-import threading
-import numpy
 
 
 FRAME_HEIGHT = 720
@@ -14,11 +12,13 @@ FORWARD_SPEED = 50
 
 STEP_ONE_TO_POP = 1
 STEP_TWO_TO_POP = 2
-NUM_OF_BALLOON_TYPES = 2
+BALLOON_TYPES = 2
 
 
 RADIUS_TO_FOLLOW = 170
 RADIUS_TO_GET_AWAY = 185
+
+TAKEOFF_KEY = 't'
 
 """Colors of Baloon"""
 greenLower = (30, 50, 50) 
@@ -34,23 +34,25 @@ blueUpper = (135,255,255)
 blueCode = cv2.COLOR_BGR2HSV
 
 
-
+"""
+    This file is used to pop balloons using the TelloCV class and Tracker class.
+"""
 
 class TelloCV(object):
     def __init__(self):
-        self.keydown = False
-        self.speed = 0
         self.up_down_speed = 0
         self.yaw_speed = 0
         self.forward_backward = 0
+
         self.takeOff = False
         self.drone = Tello()
+
         self.init_drone()
         self.init_controls()
         self.init_PID()
+
         #The key is the index, the first element in the list is the progress level, the rest are color settings
         self.popBaloons = {0: [0, greenLower, greenUpper, greenCode], 1: [0, blueLower,blueUpper, blueCode], 2: [0, redLower,redUpper, greenCode]}
-
         self.popCounter = 0
         self.colortracker = Tracker(FRAME_HEIGHT,FRAME_WIDTH,
                                self.popBaloons[0][1], self.popBaloons[0][2], self.popBaloons[0][3])
@@ -63,41 +65,32 @@ class TelloCV(object):
 
     def on_press(self, keyname):
         """handler for keyboard listener"""
-        if self.keydown:
-            return
         try:
-            self.keydown = True
             keyname = str(keyname).strip('\'')
-            if(keyname == 't'):
+            if(keyname == TAKEOFF_KEY):
+                self.drone.takeoff()
                 self.takeOff = True
-                key_handler = self.controls[keyname]
-                key_handler()
+
         except AttributeError:
             print('Error with keys')
     
 
-    def on_release(self, keyname):
-        """Reset on key up from keyboard listener"""
-        self.keydown = False
 
     def init_controls(self):
-        """Define keys and add listener"""
-        self.controls = {
-            't': lambda: self.drone.takeoff(),
-        }
-
-        self.key_listener = keyboard.Listener(on_press=self.on_press,
-                                              on_release=self.on_release)
+        """Add keyboard listener"""
+        self.key_listener = keyboard.Listener(on_press=self.on_press)
         self.key_listener.start()
 
 
-#We want to use a feedback control loop to direct the drone towards the recognized object from tracker.py
-    #to do this we will use a PID controller.   
-        #find an optimal Vx and Vy using a PID
-        # distance = 100 # setpoint, pixels
-        # Vx = 0      #manipulated variable
-        # Vy = 0      #manipulated variable 
     def init_PID(self):
+        """
+        We want to use a feedback control loop to direct the drone towards the recognized object from tracker.py
+        to do this we will use a PID controller.   
+        find an optimal Vx and Vy using a PID
+        distance = 100 # setpoint, pixels
+        Vx = 0      #manipulated variable
+        Vy = 0      #manipulated variable 
+        """
         def proportional():
             Vx = 0
             Vy = 0
@@ -135,28 +128,57 @@ class TelloCV(object):
         self.PID.send(None)
 
 
+    """ 
+    In this function we get the x, y , radius of the balloon
+        By this, we calculate the Vx,Vy using the PID. These Vx, Vy is the velocity
+        in which the drone should move:
+        if the Vx > 0 we move in yaw velocity to the right,
+        if the Vx < 0 we move in yaw velocity to the left. 
+        if the Vy > 0 we move up, if the Vy < 0, we move down.
+        Note that if the balloon was detected we get a radius bigger than 0,
+        It means that the balloon was found and we should move forward with FORWARD_SPEED,
+        Until the radius of the balloon is RADIUS_TO_GET_AWAY. After this we go backward 60cm.
+        There are 2 steps to pop the balloon: 
+        1) To move forward until RADIUS_TO_GET_AWAY
+        2) To move backward
+
+        Then we repeat this again, we check if the radius is equal to zero,
+        if yes, and step 2 was done, it means that there is no balloon with this color (the balloon was popped), and we set our
+        Tracker to the next color definded in the dict popBaloons.
+
+        Also we always return the cv2 image to display it in a new window
+        
+    """
     def process_frame(self, frame):
-        """convert frame to cv2 image and show"""
-        #image = cv2.cvtColor(numpy.array(frame), cv2.COLOR_RGB2BGR)
-        image = frame
+        image = frame #convert frame to cv2 image and show
         distance = 0
 
-        xoff, yoff,radius = self.colortracker.track(image)
+        xoff, yoff,radius = self.colortracker.track(image) # we use track function from colortracker object
 
-        image = self.colortracker.draw_arrows(image)
-        Vx,Vy=self.PID.send([xoff, yoff, distance])
+        image = self.colortracker.draw_arrows(image) # draw the arrows that shows where the drone should move to
+        Vx,Vy=self.PID.send([xoff, yoff, distance]) # calculate the X,Y Velocity using PID
 
-        cv2.putText(image, f"Radius: {round(radius,2)}", (30, 35),cv2.FONT_HERSHEY_COMPLEX, 0.6, (0, 0, 255), 2) # Look up after the radius of the balloon
+        #Show the radius of the drone in the cv2 image
+        cv2.putText(image, f"Radius: {round(radius,2)}", (30, 35),cv2.FONT_HERSHEY_COMPLEX, 0.6, (0, 0, 255), 2)
 
         if self.takeOff: # if the drone is already in the air
+            
+            self.drone.get_acceleration_x()
 
-            if radius == 0: # if no object has been detected
-                self.drone.send_rc_control(0,0,0,0) #the drone does nothing
+            if radius == 0: # if no object was detected
+                self.drone.send_rc_control(0,0,0,0) #the drone does nothing (waits)
 
                 if self.popBaloons[self.popCounter][0] == STEP_TWO_TO_POP: #if the drone just finished to pop one of the baloons
-                    self.popCounter += 1 # set to next balloon
-                    self.colortracker = Tracker(FRAME_HEIGHT,FRAME_WIDTH,
-                            self.popBaloons[self.popCounter][1], self.popBaloons[self.popCounter][2], self.popBaloons[self.popCounter][3]) # set the tracker for the next color balloon
+
+                    if self.popCounter == BALLOON_TYPES-1: #if we get to the last index
+                        self.drone.land() #land the drone
+
+
+                    else:
+                        self.popCounter += 1 # set our target to the next balloon
+                        #Set the tracker for the next color balloon
+                        self.colortracker = Tracker(FRAME_HEIGHT,FRAME_WIDTH,
+                            self.popBaloons[self.popCounter][1], self.popBaloons[self.popCounter][2], self.popBaloons[self.popCounter][3])
             else:
 
                 if Vx > 0:
@@ -171,7 +193,9 @@ class TelloCV(object):
                 if Vy < 0:
                     self.up_down_speed = - int(abs(Vy)) # go down
 
-                """ These lines make the drone "kiss" the balloon (he goes forwards and then quickly backwards)"""
+                """ These lines make the drone pop the balloon (he goes forward and then backward)
+                    Using the two steps mentioned above we know in which state the drone is
+                """
 
                 if radius < RADIUS_TO_FOLLOW: # if the drone is not close to the balloon
                     self.forward_backward = FORWARD_SPEED # set to him forward speed towards the balloon
@@ -180,11 +204,12 @@ class TelloCV(object):
                 elif radius >= RADIUS_TO_GET_AWAY: # if the drone is too close to the balloon
                     self.drone.move_back(60)
                     if self.popBaloons[self.popCounter][0] == STEP_ONE_TO_POP:
-                        self.popBaloons[self.popCounter][0] = STEP_TWO_TO_POP # now the drone 100% popped the balloons
+                        self.popBaloons[self.popCounter][0] = STEP_TWO_TO_POP
                 else:
                     self.forward_backward = 0  
 
             if(self.drone.send_rc_control):
+                # rc control is a command which tells the drone in which velocities he needs to move
                 self.drone.send_rc_control(0,self.forward_backward,self.up_down_speed,self.yaw_speed) #move the drone
 
         return image
@@ -210,7 +235,7 @@ def main():
             telloTrack.takeOff = False
             break
 
-        cv2.imshow("Image", current_frame) # show the last frame
+        cv2.imshow("Image", current_frame) # show the last frame in a new window
 
 
 if __name__ == "__main__":

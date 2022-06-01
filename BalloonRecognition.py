@@ -9,7 +9,6 @@ import matplotlib.image as mpimg
 videoStream = True
 
 # A range of color values is determined for the desired object
-
 greenLower = (30, 50, 50) 
 greenUpper = (80, 255, 255)
 greenCode = cv2.COLOR_RGB2HSV
@@ -19,16 +18,14 @@ redLower = (161, 155, 84)
 redUpper = (179,255,255)
 redCode = cv2.COLOR_BGR2HSV
 
-#blueLower = (100,150,0)
-#blueUpper = (140,255,255)
 blueLower = (95,50,50)
 blueUpper = (135,255,255)
 blueCode = cv2.COLOR_BGR2HSV
 
-#color_lower = (90, 50, 50)
-#color_upper =(110, 255, 255)
-
-#This file is used only to check if the detections works properly
+"""
+    This file is used only to check if the detection of the color works properly,
+    The drone uses his camera in order to detect the balloon (without moving).
+"""
 
 # This function initializes tello drone and returnes reference to tello
 def setupDrone():
@@ -36,11 +33,14 @@ def setupDrone():
     tello.connect() # send 'command' to tello (used in the protocol to start communication)
     return tello
 
+
+# This function setup the stream of tello (reboot)
 def setupStream(tello : Tello):
-    tello.streamoff() #in case it wasn`t already off
+    tello.streamoff() # in case it wasn`t already off
     tello.streamon()  # enable video streaming
 
 
+# This function return the mask of the balloon for the detection
 def getBalloonMask(colorLower, colorUpper, frame, code = cv2.COLOR_RGB2HSV):
     blurred = cv2.GaussianBlur(frame, (11, 11), 0)
     hsv = cv2.cvtColor(blurred, code)
@@ -52,7 +52,7 @@ def getBalloonMask(colorLower, colorUpper, frame, code = cv2.COLOR_RGB2HSV):
     mask = cv2.dilate(mask,None, iterations=2)
     return mask
 
-
+# This function helps to the detect the balloon, circle it and return the frame
 def detectBalloon(frame, colorLower, colorUpper, code):
     mask = getBalloonMask(colorLower, colorUpper, frame,code)
     # find contours in the mask and initialize the current
@@ -97,6 +97,7 @@ if __name__ == "__main__":
 
 
 
+"""Links that helped me"""
 #https://github.com/trunc8/ball-tracking-opencv-and-ros/blob/main/src/ball_tracker.py
 #https://www.bluetin.io/opencv/object-detection-tracking-opencv-python/
 #https://github.com/Practical-CV/Color-Based-Ball-Tracking-With-OpenCV/blob/master/ball_tracking.py
